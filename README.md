@@ -1,6 +1,8 @@
 # `git-plumbing-create-commit`
 
 An example program that demonstrates how to create commits using Git plumbing.
+The demonstrated method uses a temporary working tree for programmatic updates
+without interfering with the user’s index or working tree.
 
 ## COPYING
 
