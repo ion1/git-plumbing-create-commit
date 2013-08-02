@@ -1,0 +1,95 @@
+#!/bin/sh
+
+# git-plumbing-create-commit – An example program that demonstrates how to
+# create commits using Git plumbing.
+
+# CC0. To the extent possible under law, Johan Kiviniemi has waived all
+# copyright and related or neighboring rights to git-plumbing-create-commit.
+# This work is published from: Suomi.
+
+set -eu
+
+branch=plumbing-test
+message="Automatic commit"
+
+export GIT_AUTHOR_NAME="Yet Another Git Hacker"
+export GIT_AUTHOR_EMAIL="yagh@example.net"
+export GIT_AUTHOR_DATE="$(date "+%Y-%m-%dT%H:%M:%S%z")"
+
+export GIT_COMMITTER_NAME="$GIT_AUTHOR_NAME"
+export GIT_COMMITTER_EMAIL="$GIT_AUTHOR_EMAIL"
+export GIT_COMMITTER_DATE="$GIT_AUTHOR_DATE"
+
+tempdir="$(mktemp -dt plumbing-test.XXXXXXXXXX)"
+trap 'rm -fr "$tempdir"' 0 1 2 13 15
+
+changelog="$tempdir/changelog"
+>"$changelog" printf "%s\n" "$message"
+
+export GIT_INDEX_FILE="$tempdir/index"
+export GIT_WORK_TREE="$tempdir/working-tree"
+mkdir -p "$GIT_WORK_TREE"
+
+# Is there a local branch by that name already?
+local_ref=refs/heads/"$branch"
+if ! git show-ref --quiet --verify "$local_ref"; then
+  local_ref=
+fi
+
+# Does origin have a branch by that name already?
+remote_ref=refs/remotes/origin/"$branch"
+if ! git show-ref --quiet --verify "$remote_ref"; then
+  remote_ref=
+fi
+
+# This will be empty if we are creating a new branch.
+parent_branch="${local_ref:-$remote_ref}"
+
+# Skip this if the working tree should not be populated with the previous
+# commit, for instance when your program generates the full tree every time.
+if [ -n "$parent_branch" ]; then
+  # Initialize the working tree with the previous commit.
+  git ls-tree -z -r --full-name "$parent_branch" | \
+    git update-index -z --index-info
+  git checkout-index -a
+fi
+
+(
+  cd "$GIT_WORK_TREE"
+
+  # Modify the working tree here.
+  >>"hello" printf "Hello from %s\n" "$GIT_AUTHOR_DATE"
+  rm -f foo bar baz
+  case "$$" in
+    *[0-3]) >foo printf "%s\n" "$$" ;;
+    *[4-7]) >bar printf "%s\n" "$$" ;;
+    *)      >baz printf "%s\n" "$$" ;;
+  esac
+)
+
+# Drop --exclude-standard to ignore .gitignore et al.
+git ls-files -z --exclude-standard --deleted --modified --others | \
+  git update-index -z --add --remove --stdin
+
+treehash="$(git write-tree)"
+
+if [ -n "$parent_branch" ] && \
+   [ "$treehash" = "$(git rev-parse "$parent_branch":)" ]; then
+  >&2 printf "No changes, aborting\n"
+  false
+fi
+
+if [ -n "$parent_branch" ]; then
+  commithash="$(git commit-tree "$treehash" -p "$parent_branch" <"$changelog")"
+else
+  commithash="$(git commit-tree "$treehash" <"$changelog")"
+fi
+
+if [ -n "$parent_branch" ]; then
+  git --no-pager diff --stat "$parent_branch" "$commithash"
+fi
+
+git update-ref refs/heads/"$branch" "$commithash"
+
+# You may or may not want this here.
+git gc --auto
