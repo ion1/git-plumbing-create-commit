@@ -69,7 +69,8 @@ fi
   esac
 )
 
-# Drop --exclude-standard to ignore .gitignore et al.
+# --exclude-standard will apply exclusions from .gitignore et al. Drop it to
+# include everything despite exclusion files.
 git ls-files -z --exclude-standard --deleted --modified --others | \
   git update-index -z --add --remove --stdin
 
